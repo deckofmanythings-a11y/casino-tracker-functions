@@ -22,12 +22,18 @@ export function sessionNet(s: { buy_in_total?: unknown; cash_out?: unknown }): n
 
 export interface TripTotals { buyins: number; cashouts: number; remaining: number; net: number; }
 
+// Totals for the active trip = every session of this account dated on/after the trip's
+// start_date (the whole visit), NOT just sessions carrying trip_id. remaining is the live
+// "cash in pocket": bankroll minus what's gone into machines, plus what's come back out.
 export async function computeTripTotals(
   supabase: ReturnType<typeof createAdminClient>,
-  trip: { id: string; starting_bankroll: unknown },
+  accountId: string,
+  trip: { starting_bankroll: unknown; start_date?: string | null; started_at?: string | null },
 ): Promise<TripTotals> {
-  const { data } = await supabase
-    .from('ct_sessions').select('buy_in_total, cash_out').eq('trip_id', trip.id);
+  const startDate = trip.start_date || (trip.started_at || '').slice(0, 10);
+  let q = supabase.from('ct_sessions').select('buy_in_total, cash_out').eq('account_id', accountId);
+  if (startDate) q = q.gte('session_date', startDate);
+  const { data } = await q;
   const buyins = (data || []).reduce((s, r) => s + num(r.buy_in_total), 0);
   const cashouts = (data || []).reduce((s, r) => s + num(r.cash_out), 0);
   return { buyins, cashouts, net: cashouts - buyins, remaining: num(trip.starting_bankroll) - buyins + cashouts };
@@ -51,7 +57,7 @@ export async function buildBootstrap(
   ]);
 
   const active_trip = tripRes.data || null;
-  const active_trip_totals = active_trip ? await computeTripTotals(supabase, active_trip) : null;
+  const active_trip_totals = active_trip ? await computeTripTotals(supabase, account.id, active_trip) : null;
 
   return {
     today,

@@ -194,7 +194,9 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
         if (!data) return { error: 'Trip not found.', status: 404 };
         await supabase.from('ct_trips').update(fields).eq('id', body.id as string);
       } else {
-        await supabase.from('ct_trips').insert({ ...fields, account_id: account.id });
+        const insert: Record<string, unknown> = { ...fields, account_id: account.id };
+        if (typeof body.start_date === 'string') insert.start_date = body.start_date; // client's local date
+        await supabase.from('ct_trips').insert(insert);
       }
       return { ok: true };
     }
