@@ -77,7 +77,15 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
         return { ok: true };
       }
       // Create
-      const insert: Record<string, unknown> = { ...fields, account_id: account.id };
+      const clientKey = typeof body.client_key === 'string' ? body.client_key : null;
+      // Idempotency: a retried/double create with the same client_key returns the
+      // session already made instead of inserting a duplicate.
+      if (clientKey) {
+        const { data: dup } = await supabase.from('ct_sessions').select('id')
+          .eq('account_id', account.id).eq('client_key', clientKey).maybeSingle();
+        if (dup) return { ok: true, created_session_id: dup.id, deduped: true };
+      }
+      const insert: Record<string, unknown> = { ...fields, account_id: account.id, client_key: clientKey };
       if (typeof body.session_date === 'string') insert.session_date = body.session_date;
       if ('cash_out' in body) {
         const co = numOrNull(body.cash_out);
@@ -85,7 +93,15 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
         if (co !== null) insert.ended_at = new Date().toISOString();
       }
       const { data: created, error } = await supabase.from('ct_sessions').insert(insert).select().single();
-      if (error) return { error: error.message, status: 400 };
+      if (error) {
+        // Unique-index race: a concurrent insert with the same key won — return that one.
+        if (error.code === '23505' && clientKey) {
+          const { data: dup } = await supabase.from('ct_sessions').select('id')
+            .eq('account_id', account.id).eq('client_key', clientKey).maybeSingle();
+          if (dup) return { ok: true, created_session_id: dup.id, deduped: true };
+        }
+        return { error: error.message, status: 400 };
+      }
       // Optional opening buy-in in the same call.
       const openingBuyIn = numOrNull(body.buy_in);
       if (openingBuyIn !== null) {
