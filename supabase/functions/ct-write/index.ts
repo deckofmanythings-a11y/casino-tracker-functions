@@ -21,7 +21,7 @@ function json(body: unknown, status = 200) {
 
 type DB = ReturnType<typeof createAdminClient>;
 const W2G_THRESHOLD = 1200; // IRS W-2G hand-pay reporting threshold for slots.
-const CATEGORIES = ['slot', 'table', 'video_poker', 'other'];
+const CATEGORIES = ['slot', 'video_poker', 'bubble_craps', 'table', 'other'];
 
 function numOrNull(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null;
