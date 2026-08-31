@@ -165,12 +165,18 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
     // ── Games (fast-select catalog) ─────────────────────────────────────────
     case 'save-game': {
       const category = CATEGORIES.includes(body.category as string) ? body.category : 'slot';
-      const fields = {
+      const fields: Record<string, unknown> = {
         name: (body.name as string || '').trim(),
         category,
         default_denom: numOrNull(body.default_denom),
         default_bet: numOrNull(body.default_bet),
       };
+      // Only accept image_url when present in the payload; '' clears it. Must be a URL in
+      // our own storage bucket (don't let arbitrary URLs be stored).
+      if ('image_url' in body) {
+        const url = typeof body.image_url === 'string' ? body.image_url.trim() : '';
+        fields.image_url = url && url.includes('/storage/v1/object/public/ct-game-art/') ? url : null;
+      }
       if (!fields.name) return { error: 'Game needs a name.', status: 400 };
       if (body.id) {
         const { data } = await supabase.from('ct_games').select('id').eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
