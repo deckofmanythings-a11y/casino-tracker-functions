@@ -5,7 +5,7 @@
 // All reads use the service-role client because ct_* tables have no anon read policy.
 
 import { createAdminClient } from '../_shared/supabaseAdmin.ts';
-import { requireAccount } from '../_shared/session.ts';
+import { requireUser } from '../_shared/user.ts';
 import { buildBootstrap, sessionNet, SESSION_SELECT } from '../_shared/bootstrap.ts';
 
 const cors = {
@@ -27,9 +27,9 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const supabase = createAdminClient();
-    const sessionResult = await requireAccount(supabase, body.session_token);
-    if ('error' in sessionResult) return json({ ok: false, message: sessionResult.error }, sessionResult.status);
-    const { account } = sessionResult;
+    const userResult = await requireUser(supabase, req);
+    if ('error' in userResult) return json({ ok: false, message: userResult.error }, userResult.status);
+    const { account } = userResult;
     const view = body.view || 'today';
 
     if (view === 'today') {

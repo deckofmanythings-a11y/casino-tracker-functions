@@ -10,7 +10,7 @@
 // have no anon read policies -- this is the only path that can read them.
 
 import type { createAdminClient } from './supabaseAdmin.ts';
-import type { Account } from './session.ts';
+import type { Account } from './user.ts';
 
 const SESSION_SELECT = '*, ct_buyins(*), ct_bonuses(*)';
 

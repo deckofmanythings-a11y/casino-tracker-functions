@@ -1,11 +1,10 @@
-// ct-whoami — session restore. On reload (or outside Discord, from a stored token),
-// the frontend calls this with the session_token it saved from ct-auth. Returns the
-// same { account, bootstrap } shape so both entry paths share one boot() on the client.
-// ct_* tables have no anon read policy, so this (service-role) function is the only
-// way the frontend can get its data back after a refresh.
+// ct-whoami — called right after the Supabase Auth session is established (and on reload).
+// Ensures the account exists for the signed-in user and returns the "today" bootstrap.
+// ct_* tables have no anon read policy, so this (service-role) function is the only way
+// the frontend gets its data.
 
 import { createAdminClient } from '../_shared/supabaseAdmin.ts';
-import { requireAccount } from '../_shared/session.ts';
+import { requireUser } from '../_shared/user.ts';
 import { buildBootstrap } from '../_shared/bootstrap.ts';
 
 const cors = {
@@ -30,9 +29,9 @@ Deno.serve(async (req) => {
     const today = typeof body.today === 'string' ? body.today : todayFallback();
 
     const supabase = createAdminClient();
-    const sessionResult = await requireAccount(supabase, body.session_token);
-    if ('error' in sessionResult) return json({ ok: false, message: sessionResult.error }, sessionResult.status);
-    const { account } = sessionResult;
+    const userResult = await requireUser(supabase, req);
+    if ('error' in userResult) return json({ ok: false, message: userResult.error }, userResult.status);
+    const { account } = userResult;
 
     const bootstrap = await buildBootstrap(supabase, account, today);
     return json({ ok: true, account, bootstrap });

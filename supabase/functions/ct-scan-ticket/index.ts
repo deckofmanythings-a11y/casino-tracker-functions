@@ -9,7 +9,7 @@
 // in the edge runtime.
 
 import { createAdminClient } from '../_shared/supabaseAdmin.ts';
-import { requireAccount } from '../_shared/session.ts';
+import { requireUser } from '../_shared/user.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -28,8 +28,8 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const supabase = createAdminClient();
-    const sessionResult = await requireAccount(supabase, body.session_token);
-    if ('error' in sessionResult) return json({ ok: false, message: sessionResult.error }, sessionResult.status);
+    const userResult = await requireUser(supabase, req);
+    if ('error' in userResult) return json({ ok: false, message: userResult.error }, userResult.status);
 
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
     if (!apiKey) return json({ ok: false, message: 'Ticket scanning is not configured on the server yet.' }, 500);

@@ -7,7 +7,7 @@
 // all rows live in the shared project.
 
 import { createAdminClient } from '../_shared/supabaseAdmin.ts';
-import { requireAccount, type Account } from '../_shared/session.ts';
+import { requireUser, type Account } from '../_shared/user.ts';
 import { buildBootstrap } from '../_shared/bootstrap.ts';
 
 const cors = {
@@ -235,9 +235,9 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const supabase = createAdminClient();
-    const sessionResult = await requireAccount(supabase, body.session_token);
-    if ('error' in sessionResult) return json({ ok: false, message: sessionResult.error }, sessionResult.status);
-    const { account } = sessionResult;
+    const userResult = await requireUser(supabase, req);
+    if ('error' in userResult) return json({ ok: false, message: userResult.error }, userResult.status);
+    const { account } = userResult;
 
     const result = await handle(String(body.action || ''), body, supabase, account);
     if ('error' in result) return json({ ok: false, message: result.error }, result.status || 400);
