@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
       if (jErr) return json({ ok: false, message: jErr.message }, 500);
 
       const { data: allBonuses, error: bErr } = await supabase.from('ct_bonuses')
-        .select('amount, multiple, machine_name, base_bet')
+        .select('amount, multiple, machine_name, base_bet, is_jackpot, created_at, ct_sessions(game_name, casino, session_date)')
         .eq('account_id', account.id);
       if (bErr) return json({ ok: false, message: bErr.message }, 500);
 
@@ -88,12 +88,12 @@ Deno.serve(async (req) => {
         return Object.entries(map).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.net - a.net);
       };
 
-      let biggest_bonus: unknown = null;
-      for (const b of allBonuses || []) {
-        if (biggest_bonus === null || num(b.multiple) > num((biggest_bonus as { multiple: unknown }).multiple)) {
-          biggest_bonus = b;
-        }
-      }
+      // All-time bonus leaderboard: biggest hits by base-bet multiple, with context.
+      const top_bonuses = (allBonuses || [])
+        .filter((b) => b.multiple !== null && b.multiple !== undefined)
+        .sort((a, b) => num(b.multiple) - num(a.multiple))
+        .slice(0, 15);
+      const biggest_bonus = top_bonuses[0] || null;
       const total_bonus_won = (allBonuses || []).reduce((sum, b) => sum + num(b.amount), 0);
 
       return json({
@@ -112,6 +112,7 @@ Deno.serve(async (req) => {
           by_game: groupBy('game_name'),
           by_casino: groupBy('casino'),
           jackpots: jackpots || [],
+          top_bonuses,
         },
       });
     }
