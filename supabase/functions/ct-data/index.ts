@@ -89,10 +89,12 @@ Deno.serve(async (req) => {
       };
 
       // All-time bonus leaderboard: biggest hits by base-bet multiple, with context.
+      // The client paginates this (3 → 10 → 20 …), so return the full ranked list
+      // (bounded to keep the payload sane).
       const top_bonuses = (allBonuses || [])
         .filter((b) => b.multiple !== null && b.multiple !== undefined)
         .sort((a, b) => num(b.multiple) - num(a.multiple))
-        .slice(0, 15);
+        .slice(0, 200);
       const biggest_bonus = top_bonuses[0] || null;
       const total_bonus_won = (allBonuses || []).reduce((sum, b) => sum + num(b.amount), 0);
 
