@@ -44,7 +44,7 @@ export async function buildBootstrap(
   account: Account,
   today: string,
 ) {
-  const [gamesRes, tripRes, sessRes] = await Promise.all([
+  const [gamesRes, tripRes, sessRes, stakesRes] = await Promise.all([
     supabase.from('ct_games').select('*')
       .eq('account_id', account.id).eq('archived', false)
       .order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
@@ -54,6 +54,10 @@ export async function buildBootstrap(
     supabase.from('ct_sessions').select(SESSION_SELECT)
       .eq('account_id', account.id).eq('session_date', today)
       .order('started_at', { ascending: true }),
+    // All stakes (there are few), newest first. If the table isn't migrated yet the
+    // query errors and data is null -> [], so bootstrap never breaks over it.
+    supabase.from('ct_stakes').select('*')
+      .eq('account_id', account.id).order('started_at', { ascending: false }),
   ]);
 
   const active_trip = tripRes.data || null;
@@ -65,6 +69,7 @@ export async function buildBootstrap(
     active_trip,
     active_trip_totals,
     sessions: sessRes.data || [],
+    stakes: stakesRes.data || [],
   };
 }
 

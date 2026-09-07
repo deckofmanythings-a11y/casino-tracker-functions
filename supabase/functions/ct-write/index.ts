@@ -230,6 +230,56 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
       return { ok: true };
     }
 
+    // ── Staking ─────────────────────────────────────────────────────────────
+    // A stake is my money fronted to a player. On settle I recover up to the stake
+    // (my net = min(0, returned - stake)); they keep max(0, returned - stake). The
+    // client computes those splits from these two stored numbers.
+    case 'save-stake': {
+      const fields: Record<string, unknown> = {
+        person: (body.person as string || '').trim() || 'Player',
+        casino: (body.casino as string) || null,
+        stake_amount: numOrNull(body.stake_amount) ?? 0,
+        notes: (body.notes as string) ?? null,
+      };
+      if (body.id) {
+        const { data } = await supabase.from('ct_stakes').select('id').eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
+        if (!data) return { error: 'Stake not found.', status: 404 };
+        const patch: Record<string, unknown> = {};
+        for (const k of ['person', 'casino', 'stake_amount', 'notes']) if (k in body) patch[k] = fields[k];
+        if ('returned' in body) {
+          const r = numOrNull(body.returned);
+          patch.returned = r;
+          patch.ended_at = r === null ? null : new Date().toISOString();
+        }
+        await supabase.from('ct_stakes').update(patch).eq('id', body.id as string);
+        return { ok: true };
+      }
+      const insert: Record<string, unknown> = { ...fields, account_id: account.id };
+      if ('returned' in body) {
+        const r = numOrNull(body.returned);
+        insert.returned = r;
+        if (r !== null) insert.ended_at = new Date().toISOString();
+      }
+      await supabase.from('ct_stakes').insert(insert);
+      return { ok: true };
+    }
+
+    case 'settle-stake': {
+      const { data } = await supabase.from('ct_stakes').select('id').eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
+      if (!data) return { error: 'Stake not found.', status: 404 };
+      const r = numOrNull(body.returned);
+      if (r === null) return { error: 'Enter the amount returned.', status: 400 };
+      await supabase.from('ct_stakes').update({ returned: r, ended_at: new Date().toISOString() }).eq('id', data.id);
+      return { ok: true };
+    }
+
+    case 'delete-stake': {
+      const { data } = await supabase.from('ct_stakes').select('id').eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
+      if (!data) return { error: 'Stake not found.', status: 404 };
+      await supabase.from('ct_stakes').delete().eq('id', data.id);
+      return { ok: true };
+    }
+
     default:
       return { error: 'Unknown action: ' + action, status: 400 };
   }
