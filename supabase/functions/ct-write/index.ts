@@ -20,7 +20,7 @@ function json(body: unknown, status = 200) {
 }
 
 type DB = ReturnType<typeof createAdminClient>;
-const W2G_THRESHOLD = 1200; // IRS W-2G hand-pay reporting threshold for slots.
+const W2G_THRESHOLD = 2000; // Default auto-flag for a W-2G hand pay (user-tuned; always overridable per bonus).
 const CATEGORIES = ['slot', 'video_poker', 'bubble_craps', 'table', 'other'];
 
 function numOrNull(v: unknown): number | null {
@@ -159,6 +159,16 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
         .eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
       if (!row) return { error: 'Bonus not found.', status: 404 };
       await supabase.from('ct_bonuses').delete().eq('id', row.id);
+      return { ok: true };
+    }
+
+    // Manually flag/unflag a bonus as a W-2G hand pay. The threshold only sets the
+    // default at log time; whether paperwork actually happened is a real-world fact.
+    case 'set-bonus-jackpot': {
+      const { data: row } = await supabase.from('ct_bonuses').select('id')
+        .eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
+      if (!row) return { error: 'Bonus not found.', status: 404 };
+      await supabase.from('ct_bonuses').update({ is_jackpot: !!body.is_jackpot }).eq('id', row.id);
       return { ok: true };
     }
 
