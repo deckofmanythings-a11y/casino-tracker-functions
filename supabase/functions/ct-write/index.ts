@@ -74,6 +74,12 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
           patch.ended_at = co === null ? null : new Date().toISOString();
         }
         await supabase.from('ct_sessions').update(patch).eq('id', body.id as string);
+        // The leaderboard shows each bonus's machine_name (snapshotted at log time), so a
+        // session renamed here (e.g. in History) must push the new name onto its bonuses too.
+        if ('game_name' in body && fields.game_name && fields.game_name !== existing.game_name) {
+          await supabase.from('ct_bonuses').update({ machine_name: fields.game_name })
+            .eq('account_id', account.id).eq('session_id', body.id as string);
+        }
         return { ok: true };
       }
       // Create
