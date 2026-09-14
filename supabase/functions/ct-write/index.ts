@@ -189,9 +189,27 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
       }
       if (!fields.name) return { error: 'Game needs a name.', status: 400 };
       if (body.id) {
-        const { data } = await supabase.from('ct_games').select('id').eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
-        if (!data) return { error: 'Game not found.', status: 404 };
+        const { data: existing } = await supabase.from('ct_games').select('id, name')
+          .eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
+        if (!existing) return { error: 'Game not found.', status: 404 };
         await supabase.from('ct_games').update(fields).eq('id', body.id as string);
+        // A game's name is snapshotted onto its sessions (game_name) and their bonuses
+        // (machine_name) when they're created, so renaming the catalog entry alone leaves
+        // Stats (leaderboard + net-by-game) showing the old name. Propagate the rename to
+        // every historical row that references this catalog game (game_id), which also
+        // consolidates entries the user had spelled slightly differently.
+        const newName = fields.name as string;
+        if (newName && newName !== existing.name) {
+          await supabase.from('ct_sessions').update({ game_name: newName })
+            .eq('account_id', account.id).eq('game_id', body.id as string);
+          const { data: sids } = await supabase.from('ct_sessions').select('id')
+            .eq('account_id', account.id).eq('game_id', body.id as string);
+          const ids = (sids || []).map((r) => r.id as string);
+          if (ids.length) {
+            await supabase.from('ct_bonuses').update({ machine_name: newName })
+              .eq('account_id', account.id).in('session_id', ids);
+          }
+        }
       } else {
         const { count } = await supabase.from('ct_games').select('id', { count: 'exact', head: true }).eq('account_id', account.id);
         await supabase.from('ct_games').insert({ ...fields, account_id: account.id, sort_order: count || 0 });
