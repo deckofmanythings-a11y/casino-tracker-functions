@@ -21,7 +21,7 @@ function json(body: unknown, status = 200) {
 
 type DB = ReturnType<typeof createAdminClient>;
 const W2G_THRESHOLD = 2000; // Default auto-flag for a W-2G hand pay (user-tuned; always overridable per bonus).
-const CATEGORIES = ['slot', 'video_poker', 'bubble_craps', 'table', 'other'];
+const CATEGORIES = ['slot', 'video_poker', 'bubble_craps', 'table']; // 'other' folded into bubble_craps (Table (Other))
 
 function numOrNull(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null;
