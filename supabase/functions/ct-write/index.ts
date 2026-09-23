@@ -193,6 +193,11 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
         const url = typeof body.image_url === 'string' ? body.image_url.trim() : '';
         fields.image_url = url && url.includes('/storage/v1/object/public/ct-game-art/') ? url : null;
       }
+      // Manual tile-background override (Auto/Black/White): a 6-digit hex, else null = auto.
+      if ('art_bg' in body) {
+        const v = typeof body.art_bg === 'string' ? body.art_bg.trim() : '';
+        fields.art_bg = /^#[0-9a-fA-F]{6}$/.test(v) ? v : null;
+      }
       if (!fields.name) return { error: 'Game needs a name.', status: 400 };
       if (body.id) {
         const { data: existing } = await supabase.from('ct_games').select('id, name')
