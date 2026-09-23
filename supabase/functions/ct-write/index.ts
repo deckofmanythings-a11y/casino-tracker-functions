@@ -198,26 +198,36 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
         const v = typeof body.art_bg === 'string' ? body.art_bg.trim() : '';
         fields.art_bg = /^#[0-9a-fA-F]{6}$/.test(v) ? v : null;
       }
+      // Optional variant of the core game (e.g. "Happy & Prosperous"). Combined with the
+      // name for the displayed game title.
+      if ('variant' in body) {
+        const v = typeof body.variant === 'string' ? body.variant.trim() : '';
+        fields.variant = v || null;
+      }
       if (!fields.name) return { error: 'Game needs a name.', status: 400 };
+      // Displayed title = "Core — Variant" (or just Core). Sessions/bonuses snapshot this.
+      const combine = (n: string, v: unknown) => (v ? `${n} — ${v}` : n);
       if (body.id) {
-        const { data: existing } = await supabase.from('ct_games').select('id, name')
+        const { data: existing } = await supabase.from('ct_games').select('id, name, variant')
           .eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
         if (!existing) return { error: 'Game not found.', status: 404 };
         await supabase.from('ct_games').update(fields).eq('id', body.id as string);
-        // A game's name is snapshotted onto its sessions (game_name) and their bonuses
-        // (machine_name) when they're created, so renaming the catalog entry alone leaves
-        // Stats (leaderboard + net-by-game) showing the old name. Propagate the rename to
-        // every historical row that references this catalog game (game_id), which also
-        // consolidates entries the user had spelled slightly differently.
-        const newName = fields.name as string;
-        if (newName && newName !== existing.name) {
-          await supabase.from('ct_sessions').update({ game_name: newName })
+        // A game's display name is snapshotted onto its sessions (game_name) and their
+        // bonuses (machine_name) at creation, so changing the core name OR variant alone
+        // leaves Stats/History showing the old title. Propagate to every historical row
+        // that references this catalog game (game_id).
+        const ex = existing as { name: string; variant?: unknown };
+        const newVariant = ('variant' in body) ? fields.variant : ex.variant;
+        const newDisplay = combine(fields.name as string, newVariant);
+        const oldDisplay = combine(ex.name, ex.variant);
+        if (newDisplay !== oldDisplay) {
+          await supabase.from('ct_sessions').update({ game_name: newDisplay })
             .eq('account_id', account.id).eq('game_id', body.id as string);
           const { data: sids } = await supabase.from('ct_sessions').select('id')
             .eq('account_id', account.id).eq('game_id', body.id as string);
           const ids = (sids || []).map((r) => r.id as string);
           if (ids.length) {
-            await supabase.from('ct_bonuses').update({ machine_name: newName })
+            await supabase.from('ct_bonuses').update({ machine_name: newDisplay })
               .eq('account_id', account.id).in('session_id', ids);
           }
         }
