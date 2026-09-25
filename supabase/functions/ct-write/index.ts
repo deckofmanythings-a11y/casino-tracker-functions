@@ -186,6 +186,7 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
         category,
         default_denom: numOrNull(body.default_denom),
         default_bet: numOrNull(body.default_bet),
+        default_buyin: numOrNull(body.default_buyin), // optional typical buy-in, pre-fills a new session
       };
       // Only accept image_url when present in the payload; '' clears it. Must be a URL in
       // our own storage bucket (don't let arbitrary URLs be stored).
