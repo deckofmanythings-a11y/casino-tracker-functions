@@ -380,6 +380,31 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
       return { ok: true };
     }
 
+    // Batch-insert comps — used when a recurring offer ("once a week over a range") is
+    // expanded client-side into one single-use comp per period.
+    case 'save-comps': {
+      const arr = Array.isArray(body.comps) ? (body.comps as Record<string, unknown>[]) : [];
+      if (!arr.length) return { error: 'No comps to save.', status: 400 };
+      const rows = arr.slice(0, 60).map((c) => {
+        const dow = Array.isArray(c.dow)
+          ? (c.dow as unknown[]).map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6) : null;
+        const isDate = (v: unknown) => (typeof v === 'string' && v) ? v : null;
+        return {
+          account_id: account.id,
+          person: (typeof c.person === 'string' && c.person.trim()) || 'Me',
+          casino: (typeof c.casino === 'string' && c.casino.trim()) ? c.casino.trim() : null,
+          title: (typeof c.title === 'string' ? c.title.trim() : '') || 'Comp',
+          notes: typeof c.notes === 'string' ? c.notes : null,
+          single_use: !!c.single_use,
+          valid_from: isDate(c.valid_from),
+          valid_to: isDate(c.valid_to),
+          dow: (dow && dow.length) ? dow : null,
+        };
+      });
+      await supabase.from('ct_comps').insert(rows);
+      return { ok: true, created: rows.length };
+    }
+
     // Assign (upsert) a colour + optional category label to a casino.
     case 'set-casino-color': {
       const casino = (body.casino as string || '').trim();
