@@ -44,7 +44,7 @@ export async function buildBootstrap(
   account: Account,
   today: string,
 ) {
-  const [gamesRes, tripRes, sessRes, stakesRes] = await Promise.all([
+  const [gamesRes, tripRes, sessRes, stakesRes, compsRes, compCasinosRes] = await Promise.all([
     supabase.from('ct_games').select('*')
       .eq('account_id', account.id).eq('archived', false)
       .order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
@@ -58,6 +58,10 @@ export async function buildBootstrap(
     // query errors and data is null -> [], so bootstrap never breaks over it.
     supabase.from('ct_stakes').select('*')
       .eq('account_id', account.id).order('started_at', { ascending: false }),
+    // Comps + per-casino colour map (both small). Resilient to a not-yet-migrated table.
+    supabase.from('ct_comps').select('*')
+      .eq('account_id', account.id).order('created_at', { ascending: false }),
+    supabase.from('ct_comp_casinos').select('*').eq('account_id', account.id),
   ]);
 
   const active_trip = tripRes.data || null;
@@ -70,6 +74,8 @@ export async function buildBootstrap(
     active_trip_totals,
     sessions: sessRes.data || [],
     stakes: stakesRes.data || [],
+    comps: compsRes.data || [],
+    comp_casinos: compCasinosRes.data || [],
   };
 }
 

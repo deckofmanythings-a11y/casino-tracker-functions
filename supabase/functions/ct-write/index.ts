@@ -330,6 +330,67 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
       return { ok: true };
     }
 
+    // ── Comps ───────────────────────────────────────────────────────────────
+    case 'save-comp': {
+      const dow = Array.isArray(body.dow)
+        ? (body.dow as unknown[]).map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6)
+        : null;
+      const fields: Record<string, unknown> = {
+        person: (body.person as string || '').trim() || 'Me',
+        casino: (body.casino as string) ? (body.casino as string).trim() : null,
+        title: (body.title as string || '').trim(),
+        notes: (body.notes as string) ?? null,
+        single_use: !!body.single_use,
+        valid_from: (typeof body.valid_from === 'string' && body.valid_from) ? body.valid_from : null,
+        valid_to: (typeof body.valid_to === 'string' && body.valid_to) ? body.valid_to : null,
+        dow: (dow && dow.length) ? dow : null,
+      };
+      if (!fields.title) return { error: 'Comp needs a title.', status: 400 };
+      if (body.id) {
+        const { data } = await supabase.from('ct_comps').select('id').eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
+        if (!data) return { error: 'Comp not found.', status: 404 };
+        await supabase.from('ct_comps').update(fields).eq('id', body.id as string);
+      } else {
+        await supabase.from('ct_comps').insert({ ...fields, account_id: account.id });
+      }
+      return { ok: true };
+    }
+
+    case 'delete-comp': {
+      const { data } = await supabase.from('ct_comps').select('id').eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
+      if (!data) return { error: 'Comp not found.', status: 404 };
+      await supabase.from('ct_comps').delete().eq('id', data.id);
+      return { ok: true };
+    }
+
+    // Mark a comp used: single-use -> done for good; recurring -> just for `date`.
+    case 'use-comp':
+    case 'unuse-comp': {
+      const undo = action === 'unuse-comp';
+      const { data: c } = await supabase.from('ct_comps').select('*').eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
+      if (!c) return { error: 'Comp not found.', status: 404 };
+      const date = typeof body.date === 'string' ? body.date : new Date().toISOString().slice(0, 10);
+      if (c.single_use) {
+        await supabase.from('ct_comps').update({ used: !undo }).eq('id', c.id);
+      } else {
+        const cur: string[] = Array.isArray(c.used_dates) ? c.used_dates : [];
+        const next = undo ? cur.filter((d) => d !== date) : (cur.includes(date) ? cur : [...cur, date]);
+        await supabase.from('ct_comps').update({ used_dates: next }).eq('id', c.id);
+      }
+      return { ok: true };
+    }
+
+    // Assign (upsert) a colour + optional category label to a casino.
+    case 'set-casino-color': {
+      const casino = (body.casino as string || '').trim();
+      if (!casino) return { error: 'Casino required.', status: 400 };
+      const color = /^#[0-9a-fA-F]{6}$/.test(body.color as string) ? (body.color as string) : '#c9a24e';
+      const category = (body.category as string)?.trim() || null;
+      await supabase.from('ct_comp_casinos')
+        .upsert({ account_id: account.id, casino, color, category }, { onConflict: 'account_id,casino' });
+      return { ok: true };
+    }
+
     default:
       return { error: 'Unknown action: ' + action, status: 400 };
   }
