@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
       // Closed sessions (cash_out set) drive net/win/loss; open ones only count
       // toward "total bought in" so an in-progress session doesn't skew results.
       const { data: sessions, error: sErr } = await supabase.from('ct_sessions')
-        .select('game_name, casino, category, buy_in_total, cash_out')
+        .select('game_name, casino, category, buy_in_total, cash_out, trip_id')
         .eq('account_id', account.id);
       if (sErr) return json({ ok: false, message: sErr.message }, 500);
 
@@ -76,16 +76,22 @@ Deno.serve(async (req) => {
       const biggest_win = nets.length ? Math.max(...nets) : 0;
       const biggest_loss = nets.length ? Math.min(...nets) : 0;
 
+      // count = closed sessions; trip_count = distinct trips (visits): a session with a
+      // trip_id counts once per trip, a session logged outside a trip counts as its own
+      // visit. The client averages "by casino" per trip, "by game" per session.
       const groupBy = (key: 'game_name' | 'casino') => {
-        const map: Record<string, { net: number; count: number; bought_in: number }> = {};
+        const map: Record<string, { net: number; count: number; bought_in: number; trips: Set<string>; solo: number }> = {};
         for (const s of closed) {
           const k = (s[key] as string) || (key === 'casino' ? 'Unspecified' : 'Unknown');
-          if (!map[k]) map[k] = { net: 0, count: 0, bought_in: 0 };
+          if (!map[k]) map[k] = { net: 0, count: 0, bought_in: 0, trips: new Set(), solo: 0 };
           map[k].net += sessionNet(s);
           map[k].count += 1;
           map[k].bought_in += num(s.buy_in_total);
+          if (s.trip_id) map[k].trips.add(s.trip_id as string); else map[k].solo += 1;
         }
-        return Object.entries(map).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.net - a.net);
+        return Object.entries(map)
+          .map(([name, v]) => ({ name, net: v.net, count: v.count, bought_in: v.bought_in, trip_count: v.trips.size + v.solo }))
+          .sort((a, b) => b.net - a.net);
       };
 
       // All-time bonus leaderboard: biggest hits by base-bet multiple, with context.
