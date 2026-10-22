@@ -19,7 +19,10 @@ function json(body: unknown, status = 200) {
 
 function num(v: unknown): number { return Number(v || 0); }
 
-const HISTORY_LIMIT = 400;
+// Max sessions the History tab fetches (newest first). Deliberately generous — a personal
+// log should never silently hide old entries. Nothing is ever deleted; this only caps one
+// fetch's payload. Lifetime Stats queries all sessions unbounded regardless.
+const HISTORY_LIMIT = 10000;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
