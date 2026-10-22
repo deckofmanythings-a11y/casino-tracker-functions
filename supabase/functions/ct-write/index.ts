@@ -423,8 +423,10 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
       if (!casino) return { error: 'Casino required.', status: 400 };
       const color = /^#[0-9a-fA-F]{6}$/.test(body.color as string) ? (body.color as string) : '#c9a24e';
       const category = (body.category as string)?.trim() || null;
-      await supabase.from('ct_comp_casinos')
-        .upsert({ account_id: account.id, casino, color, category }, { onConflict: 'account_id,casino' });
+      const row: Record<string, unknown> = { account_id: account.id, casino, color, category };
+      // Free-text per-casino notes (e.g. "$2 Progressive on UTH", "has Bubble craps").
+      if ('notes' in body) row.notes = typeof body.notes === 'string' ? (body.notes.trim() || null) : null;
+      await supabase.from('ct_comp_casinos').upsert(row, { onConflict: 'account_id,casino' });
       return { ok: true };
     }
 

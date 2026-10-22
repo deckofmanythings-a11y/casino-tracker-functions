@@ -44,7 +44,7 @@ export async function buildBootstrap(
   account: Account,
   today: string,
 ) {
-  const [gamesRes, tripRes, sessRes, stakesRes, compsRes, compCasinosRes] = await Promise.all([
+  const [gamesRes, tripRes, sessRes, stakesRes, compsRes, compCasinosRes, recentRes] = await Promise.all([
     supabase.from('ct_games').select('*')
       .eq('account_id', account.id).eq('archived', false)
       .order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
@@ -62,10 +62,26 @@ export async function buildBootstrap(
     supabase.from('ct_comps').select('*')
       .eq('account_id', account.id).order('created_at', { ascending: false }),
     supabase.from('ct_comp_casinos').select('*').eq('account_id', account.id),
+    // Recent sessions (any day) to derive an organic "last games played" quick-select for Today.
+    supabase.from('ct_sessions')
+      .select('game_name, category, game_id, denom, bet_size, started_at')
+      .eq('account_id', account.id)
+      .order('started_at', { ascending: false }).limit(60),
   ]);
 
   const active_trip = tripRes.data || null;
   const active_trip_totals = active_trip ? await computeTripTotals(supabase, account.id, active_trip) : null;
+
+  // Last 6 DISTINCT games played (by game_name), most recent first — an organic favorites row.
+  const seen = new Set<string>();
+  const recent_games: Array<Record<string, unknown>> = [];
+  for (const s of recentRes.data || []) {
+    const nm = s.game_name as string;
+    if (!nm || seen.has(nm)) continue;
+    seen.add(nm);
+    recent_games.push({ name: nm, category: s.category, game_id: s.game_id, default_denom: s.denom, default_bet: s.bet_size });
+    if (recent_games.length >= 6) break;
+  }
 
   return {
     today,
@@ -76,6 +92,7 @@ export async function buildBootstrap(
     stakes: stakesRes.data || [],
     comps: compsRes.data || [],
     comp_casinos: compCasinosRes.data || [],
+    recent_games,
   };
 }
 
