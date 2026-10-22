@@ -61,13 +61,17 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
         notes: (body.notes as string) ?? null,
         // Free-text strategy shorthand (Table (Other) craps strategies, e.g. "3 Point Molly").
         strategy: typeof body.strategy === 'string' ? (body.strategy.trim() || null) : null,
+        // Table (Other) craps side-bet achievements (All Small / Make 'Em All / All Tall).
+        craps_small: body.craps_small === true,
+        craps_all: body.craps_all === true,
+        craps_tall: body.craps_tall === true,
       };
       if (body.id) {
         const existing = await ownSession(supabase, account.id, body.id);
         if (!existing) return { error: 'Session not found.', status: 404 };
         // Only overwrite fields actually provided (partial edit).
         const patch: Record<string, unknown> = {};
-        for (const k of ['game_name', 'category', 'game_id', 'trip_id', 'casino', 'denom', 'bet_size', 'notes', 'strategy']) {
+        for (const k of ['game_name', 'category', 'game_id', 'trip_id', 'casino', 'denom', 'bet_size', 'notes', 'strategy', 'craps_small', 'craps_all', 'craps_tall']) {
           if (k in body) patch[k] = fields[k];
         }
         if ('cash_out' in body) {
