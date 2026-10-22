@@ -59,13 +59,15 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
         denom: numOrNull(body.denom),
         bet_size: numOrNull(body.bet_size),
         notes: (body.notes as string) ?? null,
+        // Free-text strategy shorthand (Table (Other) craps strategies, e.g. "3 Point Molly").
+        strategy: typeof body.strategy === 'string' ? (body.strategy.trim() || null) : null,
       };
       if (body.id) {
         const existing = await ownSession(supabase, account.id, body.id);
         if (!existing) return { error: 'Session not found.', status: 404 };
         // Only overwrite fields actually provided (partial edit).
         const patch: Record<string, unknown> = {};
-        for (const k of ['game_name', 'category', 'game_id', 'trip_id', 'casino', 'denom', 'bet_size', 'notes']) {
+        for (const k of ['game_name', 'category', 'game_id', 'trip_id', 'casino', 'denom', 'bet_size', 'notes', 'strategy']) {
           if (k in body) patch[k] = fields[k];
         }
         if ('cash_out' in body) {
@@ -204,6 +206,12 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
       if ('variant' in body) {
         const v = typeof body.variant === 'string' ? body.variant.trim() : '';
         fields.variant = v || null;
+      }
+      // Optional reusable strategy shorthand for Table (Other) games (craps strategies);
+      // pre-fills a new session's Strategy field.
+      if ('strategy' in body) {
+        const v = typeof body.strategy === 'string' ? body.strategy.trim() : '';
+        fields.strategy = v || null;
       }
       if (!fields.name) return { error: 'Game needs a name.', status: 400 };
       // Displayed title = "Core — Variant" (or just Core). Sessions/bonuses snapshot this.
