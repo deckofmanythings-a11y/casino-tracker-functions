@@ -421,10 +421,12 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
     case 'set-casino-color': {
       const casino = (body.casino as string || '').trim();
       if (!casino) return { error: 'Casino required.', status: 400 };
-      const color = /^#[0-9a-fA-F]{6}$/.test(body.color as string) ? (body.color as string) : '#c9a24e';
-      const category = (body.category as string)?.trim() || null;
-      const row: Record<string, unknown> = { account_id: account.id, casino, color, category };
-      // Free-text per-casino notes (e.g. "$2 Progressive on UTH", "has Bubble craps").
+      // Partial upsert: only the fields actually sent are written, so saving a note never
+      // clobbers the location colour/category (and vice-versa). color is NOT NULL but defaults
+      // to #c9a24e, so a notes-only insert for a brand-new casino is fine.
+      const row: Record<string, unknown> = { account_id: account.id, casino };
+      if ('color' in body) row.color = /^#[0-9a-fA-F]{6}$/.test(body.color as string) ? (body.color as string) : '#c9a24e';
+      if ('category' in body) row.category = (body.category as string)?.trim() || null;
       if ('notes' in body) row.notes = typeof body.notes === 'string' ? (body.notes.trim() || null) : null;
       await supabase.from('ct_comp_casinos').upsert(row, { onConflict: 'account_id,casino' });
       return { ok: true };
