@@ -83,17 +83,18 @@ Deno.serve(async (req) => {
       // trip_id counts once per trip, a session logged outside a trip counts as its own
       // visit. The client averages "by casino" per trip, "by game" per session.
       const groupBy = (key: 'game_name' | 'casino') => {
-        const map: Record<string, { net: number; count: number; bought_in: number; trips: Set<string>; solo: number }> = {};
+        const map: Record<string, { net: number; count: number; bought_in: number; trips: Set<string>; solo: number; category: string | null }> = {};
         for (const s of closed) {
           const k = (s[key] as string) || (key === 'casino' ? 'Unspecified' : 'Unknown');
-          if (!map[k]) map[k] = { net: 0, count: 0, bought_in: 0, trips: new Set(), solo: 0 };
+          if (!map[k]) map[k] = { net: 0, count: 0, bought_in: 0, trips: new Set(), solo: 0, category: null };
           map[k].net += sessionNet(s);
           map[k].count += 1;
           map[k].bought_in += num(s.buy_in_total);
+          if (map[k].category == null) map[k].category = (s.category as string) || null; // game-type icon/filter
           if (s.trip_id) map[k].trips.add(s.trip_id as string); else map[k].solo += 1;
         }
         return Object.entries(map)
-          .map(([name, v]) => ({ name, net: v.net, count: v.count, bought_in: v.bought_in, trip_count: v.trips.size + v.solo }))
+          .map(([name, v]) => ({ name, net: v.net, count: v.count, bought_in: v.bought_in, trip_count: v.trips.size + v.solo, category: v.category }))
           .sort((a, b) => b.net - a.net);
       };
 
