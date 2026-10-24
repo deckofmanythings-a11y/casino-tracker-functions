@@ -251,6 +251,13 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
       return { ok: true };
     }
 
+    case 'set-game-favorite': {
+      const { data } = await supabase.from('ct_games').select('id').eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
+      if (!data) return { error: 'Game not found.', status: 404 };
+      await supabase.from('ct_games').update({ favorite: body.favorite === true }).eq('id', data.id);
+      return { ok: true };
+    }
+
     case 'delete-game': {
       // Soft-archive so existing sessions that reference it keep their game_id.
       const { data } = await supabase.from('ct_games').select('id').eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
