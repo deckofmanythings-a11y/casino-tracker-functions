@@ -211,6 +211,12 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
         const v = typeof body.variant === 'string' ? body.variant.trim() : '';
         fields.variant = v || null;
       }
+      // Optional free-text note on the variant (e.g. "Major x3"); shown as the subtitle on
+      // this variant's tile in the Today quick-select. Display-only, not snapshotted.
+      if ('variant_note' in body) {
+        const v = typeof body.variant_note === 'string' ? body.variant_note.trim() : '';
+        fields.variant_note = v || null;
+      }
       // Optional reusable strategy shorthand for Table (Other) games (craps strategies);
       // pre-fills a new session's Strategy field.
       if ('strategy' in body) {
