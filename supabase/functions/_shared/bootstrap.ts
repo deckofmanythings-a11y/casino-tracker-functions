@@ -44,7 +44,7 @@ export async function buildBootstrap(
   account: Account,
   today: string,
 ) {
-  const [gamesRes, tripRes, sessRes, stakesRes, compsRes, compCasinosRes, recentRes, lastTripRes] = await Promise.all([
+  const [gamesRes, tripRes, sessRes, carryRes, stakesRes, compsRes, compCasinosRes, recentRes, lastTripRes] = await Promise.all([
     supabase.from('ct_games').select('*')
       .eq('account_id', account.id).eq('archived', false)
       .order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
@@ -53,6 +53,13 @@ export async function buildBootstrap(
       .order('started_at', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('ct_sessions').select(SESSION_SELECT)
       .eq('account_id', account.id).eq('session_date', today)
+      .order('started_at', { ascending: true }),
+    // Carryover: open sessions (never cashed out) that started on a PRIOR day — e.g. a table
+    // session still live when the clock passed midnight. They keep their original session_date
+    // (their money belongs to the day they began) but must stay continuable on Today, or they'd
+    // silently vanish mid-play. Closed sessions are never carried; a new session is session_date=today.
+    supabase.from('ct_sessions').select(SESSION_SELECT)
+      .eq('account_id', account.id).is('cash_out', null).neq('session_date', today)
       .order('started_at', { ascending: true }),
     // All stakes (there are few), newest first. If the table isn't migrated yet the
     // query errors and data is null -> [], so bootstrap never breaks over it.
@@ -92,6 +99,7 @@ export async function buildBootstrap(
     active_trip,
     active_trip_totals,
     sessions: sessRes.data || [],
+    carryover_open: carryRes.data || [],
     stakes: stakesRes.data || [],
     comps: compsRes.data || [],
     comp_casinos: compCasinosRes.data || [],
