@@ -29,6 +29,13 @@ function numOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// A ladder index (current rung / lock-up high-water). Non-negative integer, clamped to a
+// generous ceiling so a bad client value can't write garbage; the client owns the real bounds.
+function ladderIdx(v: unknown): number | null {
+  const n = numOrNull(v);
+  return n === null ? null : Math.max(0, Math.min(99, Math.round(n)));
+}
+
 // Confirms a session belongs to the account; returns it or null.
 async function ownSession(supabase: DB, accountId: string, sessionId: unknown) {
   if (!sessionId || typeof sessionId !== 'string') return null;
@@ -65,13 +72,18 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
         craps_small: body.craps_small === true,
         craps_all: body.craps_all === true,
         craps_tall: body.craps_tall === true,
+        // Attack Ladder (slots): current rung the wheel points at, and the lock-up high-water
+        // (highest rung reached, ratcheted — never drops when you slide back down). Indices into
+        // the client's hard-coded ladder; pure play-aid state, never touches money or totals.
+        ladder_rung: ladderIdx(body.ladder_rung),
+        ladder_lock: ladderIdx(body.ladder_lock),
       };
       if (body.id) {
         const existing = await ownSession(supabase, account.id, body.id);
         if (!existing) return { error: 'Session not found.', status: 404 };
         // Only overwrite fields actually provided (partial edit).
         const patch: Record<string, unknown> = {};
-        for (const k of ['game_name', 'category', 'game_id', 'trip_id', 'casino', 'denom', 'bet_size', 'notes', 'strategy', 'craps_small', 'craps_all', 'craps_tall']) {
+        for (const k of ['game_name', 'category', 'game_id', 'trip_id', 'casino', 'denom', 'bet_size', 'notes', 'strategy', 'craps_small', 'craps_all', 'craps_tall', 'ladder_rung', 'ladder_lock']) {
           if (k in body) patch[k] = fields[k];
         }
         if ('cash_out' in body) {
