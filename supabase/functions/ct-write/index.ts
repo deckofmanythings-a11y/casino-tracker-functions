@@ -263,8 +263,19 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
           }
         }
       } else {
-        const { count } = await supabase.from('ct_games').select('id', { count: 'exact', head: true }).eq('account_id', account.id);
-        await supabase.from('ct_games').insert({ ...fields, account_id: account.id, sort_order: count || 0 });
+        // New game: append to the end, UNLESS it's a duplicate — then slot it right below its
+        // source (source sort_order + 1) and push everyone at/after that slot down by one.
+        const { data: rows } = await supabase.from('ct_games').select('id, sort_order').eq('account_id', account.id);
+        const list = (rows || []) as Array<{ id: string; sort_order: number }>;
+        const src = body.dupe_from ? list.find((r) => r.id === body.dupe_from) : null;
+        let sort_order = list.length;
+        if (src) {
+          sort_order = Number(src.sort_order) + 1;
+          const bump = list.filter((r) => Number(r.sort_order) >= sort_order);
+          await Promise.all(bump.map((r) =>
+            supabase.from('ct_games').update({ sort_order: Number(r.sort_order) + 1 }).eq('id', r.id).eq('account_id', account.id)));
+        }
+        await supabase.from('ct_games').insert({ ...fields, account_id: account.id, sort_order });
       }
       return { ok: true };
     }
