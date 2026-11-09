@@ -36,6 +36,18 @@ function ladderIdx(v: unknown): number | null {
   return n === null ? null : Math.max(0, Math.min(99, Math.round(n)));
 }
 
+// Normalizes a Hit List challenge array to [{id,text,done}]. Drops empties, trims text,
+// caps the count and text length so a bad client payload can't bloat the row.
+function sanitizeChallenges(v: unknown): Array<{ id: string; text: string; done: boolean }> {
+  if (!Array.isArray(v)) return [];
+  return v.slice(0, 50).map((c) => {
+    const o = (c && typeof c === 'object') ? c as Record<string, unknown> : {};
+    const text = (typeof o.text === 'string' ? o.text : '').trim().slice(0, 200);
+    const id = (typeof o.id === 'string' && o.id) ? o.id : crypto.randomUUID();
+    return { id, text, done: o.done === true };
+  }).filter((c) => c.text);
+}
+
 // Confirms a session belongs to the account; returns it or null.
 async function ownSession(supabase: DB, accountId: string, sessionId: unknown) {
   if (!sessionId || typeof sessionId !== 'string') return null;
@@ -465,6 +477,43 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
       if ('category' in body) row.category = (body.category as string)?.trim() || null;
       if ('notes' in body) row.notes = typeof body.notes === 'string' ? (body.notes.trim() || null) : null;
       await supabase.from('ct_comp_casinos').upsert(row, { onConflict: 'account_id,casino' });
+      return { ok: true };
+    }
+
+    // ── Hit List (scavenger hunt) ───────────────────────────────────────────
+    case 'hitlist-add': {
+      const game_name = (body.game_name as string || '').trim();
+      if (!game_name) return { error: 'A game is required.', status: 400 };
+      const category = CATEGORIES.includes(body.category as string) ? body.category : null;
+      // New items go to the end of the list.
+      const { count } = await supabase.from('ct_hitlist').select('id', { count: 'exact', head: true }).eq('account_id', account.id);
+      await supabase.from('ct_hitlist').insert({
+        account_id: account.id,
+        game_id: (typeof body.game_id === 'string' && body.game_id) ? body.game_id : null,
+        game_name,
+        category,
+        challenges: sanitizeChallenges(body.challenges),
+        done: body.done === true,
+        sort_order: count || 0,
+      });
+      return { ok: true };
+    }
+
+    case 'hitlist-update': {
+      const { data } = await supabase.from('ct_hitlist').select('id').eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
+      if (!data) return { error: 'Hit List item not found.', status: 404 };
+      const patch: Record<string, unknown> = {};
+      if ('challenges' in body) patch.challenges = sanitizeChallenges(body.challenges);
+      if ('done' in body) patch.done = body.done === true;
+      if (Object.keys(patch).length) await supabase.from('ct_hitlist').update(patch).eq('id', data.id);
+      return { ok: true };
+    }
+
+    case 'hitlist-remove': {
+      // Accepts a single id or a batch of ids (used by "Clear done").
+      const ids = Array.isArray(body.ids) ? (body.ids as unknown[]).filter((x): x is string => typeof x === 'string')
+        : (typeof body.id === 'string' ? [body.id] : []);
+      if (ids.length) await supabase.from('ct_hitlist').delete().eq('account_id', account.id).in('id', ids);
       return { ok: true };
     }
 
