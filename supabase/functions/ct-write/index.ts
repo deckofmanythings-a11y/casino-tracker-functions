@@ -484,7 +484,10 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
     case 'hitlist-add': {
       const game_name = (body.game_name as string || '').trim();
       if (!game_name) return { error: 'A game is required.', status: 400 };
-      const category = CATEGORIES.includes(body.category as string) ? body.category : null;
+      // 'goal' is a sentinel category for a standalone challenge not tied to a specific game
+      // (e.g. "Hit a Must Hit By on any Phoenix Link"). Only ct_hitlist rows ever use it.
+      const rawCat = body.category as string;
+      const category = (CATEGORIES.includes(rawCat) || rawCat === 'goal') ? rawCat : null;
       // New items go to the end of the list.
       const { count } = await supabase.from('ct_hitlist').select('id', { count: 'exact', head: true }).eq('account_id', account.id);
       await supabase.from('ct_hitlist').insert({
