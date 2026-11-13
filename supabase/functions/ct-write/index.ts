@@ -247,6 +247,8 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
         const v = typeof body.strategy === 'string' ? body.strategy.trim() : '';
         fields.strategy = v || null;
       }
+      // Attack Ladder bet structure: 88 = "88-credit game" (Dancing Drums / Hot Pot family), else 0.
+      if ('credit_min' in body) fields.credit_min = Number(body.credit_min) === 88 ? 88 : 0;
       if (!fields.name) return { error: 'Game needs a name.', status: 400 };
       // Displayed title = "Core — Variant" (or just Core). Sessions/bonuses snapshot this.
       const combine = (n: string, v: unknown) => (v ? `${n} — ${v}` : n);
@@ -296,6 +298,13 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
       const { data } = await supabase.from('ct_games').select('id').eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
       if (!data) return { error: 'Game not found.', status: 404 };
       await supabase.from('ct_games').update({ favorite: body.favorite === true }).eq('id', data.id);
+      return { ok: true };
+    }
+
+    case 'set-game-credit-min': {
+      const { data } = await supabase.from('ct_games').select('id').eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
+      if (!data) return { error: 'Game not found.', status: 404 };
+      await supabase.from('ct_games').update({ credit_min: Number(body.credit_min) === 88 ? 88 : 0 }).eq('id', data.id);
       return { ok: true };
     }
 
