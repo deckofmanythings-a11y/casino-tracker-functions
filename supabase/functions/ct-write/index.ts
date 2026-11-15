@@ -64,6 +64,25 @@ async function recomputeBuyIn(supabase: DB, sessionId: string): Promise<number> 
   return total;
 }
 
+// Sanitize a bet profile's tiers to the stored shape: an array of {denoms:number[], levels:int[]},
+// each positive and de-duped. Drops anything malformed so a bad client payload can't poison a row.
+function cleanTiers(raw: unknown): Array<{ denoms: number[]; levels: number[] }> {
+  if (!Array.isArray(raw)) return [];
+  const out: Array<{ denoms: number[]; levels: number[] }> = [];
+  for (const t of raw) {
+    if (!t || typeof t !== 'object') continue;
+    const tt = t as Record<string, unknown>;
+    const denoms = (Array.isArray(tt.denoms) ? tt.denoms : []).map(Number)
+      .filter((n) => Number.isFinite(n) && n > 0 && n <= 1000);
+    const levels = (Array.isArray(tt.levels) ? tt.levels : []).map(Number)
+      .filter((n) => Number.isFinite(n) && n > 0 && n <= 100000).map((n) => Math.round(n));
+    if (denoms.length && levels.length) {
+      out.push({ denoms: [...new Set(denoms)], levels: [...new Set(levels)] });
+    }
+  }
+  return out.slice(0, 8);
+}
+
 async function handle(action: string, body: Record<string, unknown>, supabase: DB, account: Account) {
   switch (action) {
     // ── Sessions ──────────────────────────────────────────────────────────
@@ -334,6 +353,43 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
       const ids = Array.isArray(body.ids) ? body.ids as string[] : [];
       await Promise.all(ids.map((id, i) =>
         supabase.from('ct_games').update({ sort_order: i }).eq('id', id).eq('account_id', account.id)));
+      return { ok: true };
+    }
+
+    // ── Bet profiles (user-built machine bet menus for the Attack Ladder) ───────
+    case 'save-bet-profile': {
+      const tiers = cleanTiers(body.tiers);
+      const label = typeof body.label === 'string' ? body.label.trim().slice(0, 60) : '';
+      if (!label) return { error: 'Name is required.', status: 400 };
+      if (!tiers.length) return { error: 'Add at least one denomination and bet level.', status: 400 };
+      const short = (typeof body.short === 'string' && body.short.trim()) ? body.short.trim().slice(0, 40) : label.slice(0, 40);
+      const note = (typeof body.note === 'string' && body.note.trim()) ? body.note.trim().slice(0, 120) : null;
+      if (body.id) {
+        const { data } = await supabase.from('ct_bet_profiles').select('id').eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
+        if (!data) return { error: 'Bet table not found.', status: 404 };
+        await supabase.from('ct_bet_profiles').update({ label, short, note, tiers }).eq('id', data.id);
+        return { ok: true };
+      }
+      const key = typeof body.key === 'string' ? body.key.trim().slice(0, 40) : '';
+      if (!/^[a-z0-9_]{3,40}$/.test(key)) return { error: 'Bad table id.', status: 400 };
+      // Upsert on (account, key): a re-save of an un-synced new profile reuses the row.
+      const { data: dup } = await supabase.from('ct_bet_profiles').select('id').eq('account_id', account.id).eq('key', key).maybeSingle();
+      if (dup) {
+        await supabase.from('ct_bet_profiles').update({ label, short, note, tiers, archived: false }).eq('id', dup.id);
+        return { ok: true };
+      }
+      const { data: rows } = await supabase.from('ct_bet_profiles').select('sort_order').eq('account_id', account.id);
+      const sort = (rows || []).reduce((m, r) => Math.max(m, Number(r.sort_order) + 1), 0);
+      await supabase.from('ct_bet_profiles').insert({ account_id: account.id, key, label, short, note, tiers, sort_order: sort });
+      return { ok: true };
+    }
+
+    case 'delete-bet-profile': {
+      const { data } = await supabase.from('ct_bet_profiles').select('id, key').eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
+      if (!data) return { error: 'Bet table not found.', status: 404 };
+      await supabase.from('ct_bet_profiles').update({ archived: true }).eq('id', data.id);
+      // Detach any games pointing at this profile so they fall back to the standard ladder cleanly.
+      await supabase.from('ct_games').update({ bet_profile: null }).eq('account_id', account.id).eq('bet_profile', data.key as string);
       return { ok: true };
     }
 
