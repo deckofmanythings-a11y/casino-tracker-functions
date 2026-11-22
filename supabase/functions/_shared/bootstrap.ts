@@ -44,7 +44,7 @@ export async function buildBootstrap(
   account: Account,
   today: string,
 ) {
-  const [gamesRes, tripRes, sessRes, carryRes, stakesRes, compsRes, compCasinosRes, recentRes, lastTripRes, hitlistRes, betProfilesRes] = await Promise.all([
+  const [gamesRes, tripRes, sessRes, carryRes, stakesRes, compsRes, compCasinosRes, recentRes, lastTripRes, hitlistRes, betProfilesRes, householdRes] = await Promise.all([
     supabase.from('ct_games').select('*')
       .eq('account_id', account.id).eq('archived', false)
       .order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
@@ -86,6 +86,10 @@ export async function buildBootstrap(
     supabase.from('ct_bet_profiles').select('*')
       .eq('account_id', account.id).eq('archived', false)
       .order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
+    // Household members (for the Comps person dropdown). Small, synced. Resilient to not-migrated.
+    supabase.from('ct_household').select('*')
+      .eq('account_id', account.id)
+      .order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
   ]);
 
   const active_trip = tripRes.data || null;
@@ -116,6 +120,7 @@ export async function buildBootstrap(
     theme_casino: (active_trip && active_trip.casino) || (lastTripRes.data && lastTripRes.data.casino) || null,
     hitlist: hitlistRes.data || [],
     bet_profiles: betProfilesRes.data || [],
+    household: householdRes.data || [],
   };
 }
 

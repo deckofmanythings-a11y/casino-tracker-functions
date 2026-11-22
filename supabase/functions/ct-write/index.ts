@@ -274,6 +274,8 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
         const v = typeof body.bet_profile === 'string' ? body.bet_profile.trim().slice(0, 40) : '';
         fields.bet_profile = v || null;
       }
+      // Hide the display name on the Today fast-select tile (art-only; a core still shows its count).
+      if ('hide_name' in body) fields.hide_name = body.hide_name === true;
       if (!fields.name) return { error: 'Game needs a name.', status: 400 };
       // Displayed title = "Core — Variant" (or just Core). Sessions/bonuses snapshot this.
       const combine = (n: string, v: unknown) => (v ? `${n} — ${v}` : n);
@@ -390,6 +392,43 @@ async function handle(action: string, body: Record<string, unknown>, supabase: D
       await supabase.from('ct_bet_profiles').update({ archived: true }).eq('id', data.id);
       // Detach any games pointing at this profile so they fall back to the standard ladder cleanly.
       await supabase.from('ct_games').update({ bet_profile: null }).eq('account_id', account.id).eq('bet_profile', data.key as string);
+      return { ok: true };
+    }
+
+    // ── Household (people the user tracks comps for) ───────────────────────────
+    case 'household-add': {
+      const name = typeof body.name === 'string' ? body.name.trim().slice(0, 60) : '';
+      if (!name) return { error: 'Name is required.', status: 400 };
+      const { data: dup } = await supabase.from('ct_household').select('id').eq('account_id', account.id).ilike('name', name).maybeSingle();
+      if (dup) return { ok: true }; // already in the household — no-op
+      const { data: rows } = await supabase.from('ct_household').select('sort_order').eq('account_id', account.id);
+      const sort = (rows || []).reduce((m, r) => Math.max(m, Number(r.sort_order) + 1), 0);
+      await supabase.from('ct_household').insert({ account_id: account.id, name, sort_order: sort });
+      return { ok: true };
+    }
+
+    case 'household-rename': {
+      const name = typeof body.name === 'string' ? body.name.trim().slice(0, 60) : '';
+      if (!name) return { error: 'Name is required.', status: 400 };
+      const { data } = await supabase.from('ct_household').select('id, name').eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
+      if (!data) return { error: 'Person not found.', status: 404 };
+      await supabase.from('ct_household').update({ name }).eq('id', data.id);
+      // Keep existing comps in sync with the rename (person is a free-text snapshot).
+      await supabase.from('ct_comps').update({ person: name }).eq('account_id', account.id).eq('person', (data as { name: string }).name);
+      return { ok: true };
+    }
+
+    case 'household-remove': {
+      const { data } = await supabase.from('ct_household').select('id').eq('id', body.id as string).eq('account_id', account.id).maybeSingle();
+      if (!data) return { error: 'Person not found.', status: 404 };
+      await supabase.from('ct_household').delete().eq('id', data.id);
+      return { ok: true };
+    }
+
+    case 'reorder-household': {
+      const ids = Array.isArray(body.ids) ? body.ids as string[] : [];
+      await Promise.all(ids.map((id, i) =>
+        supabase.from('ct_household').update({ sort_order: i }).eq('id', id).eq('account_id', account.id)));
       return { ok: true };
     }
 
