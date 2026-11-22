@@ -129,6 +129,36 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Full account dump for the one-time Supabase → Google Drive migration. Shaped to match the
+    // client's in-memory DB (sessions carry nested buyins/bonuses arrays), ready to drop into the
+    // Drive file. Read-only; the old account is untouched.
+    if (view === 'export') {
+      const [gamesR, tripsR, sessR, stakesR, compsR, compCasR, hitR, bpR, hhR] = await Promise.all([
+        supabase.from('ct_games').select('*').eq('account_id', account.id).order('sort_order', { ascending: true }),
+        supabase.from('ct_trips').select('*').eq('account_id', account.id).order('started_at', { ascending: true }),
+        supabase.from('ct_sessions').select(SESSION_SELECT).eq('account_id', account.id).order('started_at', { ascending: true }),
+        supabase.from('ct_stakes').select('*').eq('account_id', account.id),
+        supabase.from('ct_comps').select('*').eq('account_id', account.id),
+        supabase.from('ct_comp_casinos').select('*').eq('account_id', account.id),
+        supabase.from('ct_hitlist').select('*').eq('account_id', account.id).order('sort_order', { ascending: true }),
+        supabase.from('ct_bet_profiles').select('*').eq('account_id', account.id).eq('archived', false).order('sort_order', { ascending: true }),
+        supabase.from('ct_household').select('*').eq('account_id', account.id).order('sort_order', { ascending: true }),
+      ]);
+      const sessions = (sessR.data || []).map((s: Record<string, unknown>) => {
+        const { ct_buyins, ct_bonuses, ...rest } = s as { ct_buyins?: unknown[]; ct_bonuses?: unknown[] };
+        return { ...rest,
+          buyins: ((ct_buyins as Array<Record<string, unknown>>) || []).map((b) => ({ id: b.id, amount: b.amount })),
+          bonuses: ((ct_bonuses as Array<Record<string, unknown>>) || []).map((b) => ({
+            id: b.id, session_id: b.session_id, amount: b.amount, base_bet: b.base_bet,
+            multiple: b.multiple, is_jackpot: b.is_jackpot, machine_name: b.machine_name })) };
+      });
+      return json({ ok: true, export: {
+        games: gamesR.data || [], trips: tripsR.data || [], sessions,
+        stakes: stakesR.data || [], comps: compsR.data || [], comp_casinos: compCasR.data || [],
+        hitlist: hitR.data || [], bet_profiles: bpR.data || [], household: hhR.data || [],
+      } });
+    }
+
     return json({ ok: false, message: 'Unknown view: ' + view }, 400);
   } catch (e) {
     return json({ ok: false, message: e instanceof Error ? e.message : String(e) }, 500);
